@@ -169,4 +169,55 @@ class DocumentationContext_RootPageTests: XCTestCase {
         
         XCTAssertEqual(context.problems.count, 0)
     }
+    
+    func testWarnsAboutMultipleTechnologyRoots() throws {
+        let (_, context) = try loadBundle(catalog:
+            Folder(name: "multiple-roots.docc", content: [
+                // First article with @TechnologyRoot
+                TextFile(name: "FirstRoot.md", utf8Content: """
+                # First Root
+                @Metadata {
+                   @TechnologyRoot
+                }
+                This is the first root page.
+                """),
+                // Second article with @TechnologyRoot
+                TextFile(name: "SecondRoot.md", utf8Content: """
+                # Second Root
+                @Metadata {
+                   @TechnologyRoot
+                }
+                This is the second root page.
+                """),
+                // Third article with @TechnologyRoot
+                TextFile(name: "ThirdRoot.md", utf8Content: """
+                # Third Root
+                @Metadata {
+                   @TechnologyRoot
+                }
+                This is the third root page.
+                """),
+                InfoPlist(displayName: "TestBundle", identifier: "com.test.multiple-roots"),
+            ])
+        )
+        
+        // Verify that warnings were emitted for all articles with @TechnologyRoot
+        let technologyRootProblems = context.problems.filter { $0.diagnostic.identifier == "org.swift.docc.MultipleTechnologyRoots" }
+        XCTAssertEqual(technologyRootProblems.count, 3, "Should warn for each article with @TechnologyRoot")
+        
+        // Verify the warning messages
+        for problem in technologyRootProblems {
+            XCTAssertEqual(problem.diagnostic.summary, "Multiple articles found with @TechnologyRoot directive")
+            XCTAssertEqual(problem.diagnostic.explanation, "Only one article should be marked as the technology root. The first article with @TechnologyRoot will be used as the root page.")
+            XCTAssertEqual(problem.diagnostic.severity, .warning)
+            
+            // Verify a solution is provided
+            XCTAssertEqual(problem.possibleSolutions.count, 1)
+            XCTAssertEqual(problem.possibleSolutions.first?.summary, "Remove the @TechnologyRoot directive")
+        }
+        
+        // When we have multiple articles with @TechnologyRoot in an article-only catalog,
+        // all of them become root pages (not just the first one)
+        XCTAssertEqual(context.rootModules.count, 3)
+    }
 }

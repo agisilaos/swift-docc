@@ -2309,6 +2309,35 @@ public class DocumentationContext {
         let (tutorialTableOfContentsResults, tutorials, tutorialArticles, allArticles, documentationExtensions) = result
         var (otherArticles, rootPageArticles) = splitArticles(allArticles)
         
+        // Warn if multiple articles have @TechnologyRoot directive
+        if rootPageArticles.count > 1 {
+            let multipleTechnologyRootProblems = rootPageArticles.map { article -> Problem in
+                let diagnostic = Diagnostic(
+                    source: article.source,
+                    severity: .warning,
+                    range: article.value.metadata?.technologyRoot?.originalMarkup.range,
+                    identifier: "org.swift.docc.MultipleTechnologyRoots",
+                    summary: "Multiple articles found with @TechnologyRoot directive",
+                    explanation: "Only one article should be marked as the technology root. The first article with @TechnologyRoot will be used as the root page."
+                )
+                
+                guard let range = article.value.metadata?.technologyRoot?.originalMarkup.range else {
+                    return Problem(diagnostic: diagnostic)
+                }
+                
+                let solution = Solution(
+                    summary: "Remove the @TechnologyRoot directive",
+                    replacements: [
+                        Replacement(range: range, replacement: "")
+                    ]
+                )
+                
+                return Problem(diagnostic: diagnostic, possibleSolutions: [solution])
+            }
+            
+            diagnosticEngine.emit(multipleTechnologyRootProblems)
+        }
+        
         let globalOptions = (allArticles + documentationExtensions).compactMap { article in
             return article.value.options[.global]
         }
@@ -2379,6 +2408,22 @@ public class DocumentationContext {
                 return nil
             }
             return node.reference
+        }
+        
+        // Warn if multiple main modules are found in symbol graphs
+        if rootModules.count > 1 {
+            let moduleNames = rootModules.map { $0.lastPathComponent }.joined(separator: ", ")
+            let diagnostic = Diagnostic(
+                source: nil,
+                severity: .warning,
+                range: nil,
+                identifier: "org.swift.docc.MultipleMainModules",
+                summary: "Documentation contains symbol graphs for multiple modules: \(moduleNames)",
+                explanation: "Consider documenting each module separately to avoid potential issues with mixed documentation."
+            )
+            
+            let problem = Problem(diagnostic: diagnostic)
+            diagnosticEngine.emit([problem])
         }
         
         // Articles that will be automatically curated can be resolved but they need to be pre registered before resolving links.

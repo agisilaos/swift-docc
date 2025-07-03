@@ -5723,6 +5723,67 @@ let expected = """
         XCTAssertEqual(solution.replacements.count, 1)
         XCTAssertEqual(solution.replacements.first?.replacement, "")
     }
+    
+    func testWarnsAboutMultipleMainModules() throws {
+        // Create a test bundle with symbol graphs for multiple modules
+        let (_, context) = try loadBundle(catalog:
+            Folder(name: "MultiModules.docc", content: [
+                // Symbol graph for the first module
+                JSONFile(name: "FirstModule.symbols.json", content: makeSymbolGraph(
+                    moduleName: "FirstModule",
+                    symbols: [
+                        makeSymbol(
+                            id: "s:11FirstModule5FirstC",
+                            language: .swift,
+                            kind: .class,
+                            pathComponents: ["FirstModule", "First"]
+                        )
+                    ]
+                )),
+                // Symbol graph for the second module
+                JSONFile(name: "SecondModule.symbols.json", content: makeSymbolGraph(
+                    moduleName: "SecondModule",
+                    symbols: [
+                        makeSymbol(
+                            id: "s:12SecondModule6SecondC",
+                            language: .swift,
+                            kind: .class,
+                            pathComponents: ["SecondModule", "Second"]
+                        )
+                    ]
+                )),
+                // Symbol graph for the third module
+                JSONFile(name: "ThirdModule.symbols.json", content: makeSymbolGraph(
+                    moduleName: "ThirdModule",
+                    symbols: [
+                        makeSymbol(
+                            id: "s:11ThirdModule5ThirdC",
+                            language: .swift,
+                            kind: .class,
+                            pathComponents: ["ThirdModule", "Third"]
+                        )
+                    ]
+                )),
+                InfoPlist(displayName: "MultiModules", identifier: "com.test.multimodules"),
+            ])
+        )
+        
+        // Verify that a warning was emitted for multiple modules
+        let multiModuleProblems = context.problems.filter { $0.diagnostic.identifier == "org.swift.docc.MultipleMainModules" }
+        XCTAssertEqual(multiModuleProblems.count, 1, "Should warn once about multiple main modules")
+        
+        let problem = try XCTUnwrap(multiModuleProblems.first)
+        XCTAssertEqual(problem.diagnostic.severity, .warning)
+        
+        // Check that the warning message includes all module names
+        XCTAssert(problem.diagnostic.summary.contains("FirstModule"))
+        XCTAssert(problem.diagnostic.summary.contains("SecondModule"))
+        XCTAssert(problem.diagnostic.summary.contains("ThirdModule"))
+        XCTAssertEqual(problem.diagnostic.explanation, "Consider documenting each module separately to avoid potential issues with mixed documentation.")
+        
+        // Verify that all modules were still registered
+        XCTAssertEqual(context.rootModules.count, 3)
+    }
 
 }
 
